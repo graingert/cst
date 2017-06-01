@@ -1,12 +1,21 @@
 import forEach from 'lodash.foreach';
+import mergeWith from 'lodash.mergewith';
 import get from 'lodash.get';
 import { multiple as getFixtures } from 'babel-helper-fixtures';
 import { parseAndGetProgram } from '../utils';
 import xfail from './xfail.json';
 
-function runTest(task) {
-    const code = task.actual.code;
-    const throws = task.options.throws;
+function customizer(objValue, srcValue) {
+    if (Array.isArray(objValue)) {
+        return objValue.concat(srcValue);
+    }
+}
+
+function merge(args) {
+    return mergeWith({}, ...args, customizer);
+}
+
+function runTest({code, throws}) {
     try {
         parseAndGetProgram(code);
     } catch (err) {
@@ -28,17 +37,33 @@ function createTest(name, testSuite, task) {
         // this test actually hangs the test suite!
         return it.skip(testName);
     }
+
+
+    const options = merge([testSuite.options, task.options]);
+    const rawCode = task.actual.rawCode;
+
+    const code = (() => {
+        if (options.allowReturnOutsideFunction) {
+            return `() => {${rawCode}}`;
+        }
+
+        return rawCode;
+    })();
+
+    const theTask = {code, throws: options.throws};
+
+    const xFailFromOptions = (options.plugins || []).includes('objectRestSpread');
+
     it(testName, function() {
-        if (shouldXFail) {
+        if (shouldXFail || xFailFromOptions) {
             try {
-                return runTest(task);
+                return runTest(theTask);
             } catch (e) {
                 this.skip();
             }
             throw Error('This test should fail!');
         }
-
-        runTest(task);
+        runTest(theTask);
     });
 }
 
